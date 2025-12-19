@@ -1,56 +1,40 @@
+
 import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi
 import google.generativeai as genai
 
-# Sayfa yapılandırması
-st.set_page_config(page_title="Yapay Zeka Ders Asistanı", page_icon="🎓")
+st.set_page_config(page_title="Ders Asistanı", layout="wide")
 
-st.title("🎓 Yapay Zeka Ders Notu Hazırlayıcı")
-st.markdown("---")
+st.title("🎓 Yapay Zeka Ders Asistanı")
 
-# Yan panel ayarları
-st.sidebar.header("Ayarlar")
-api_key = st.sidebar.text_input("Gemini API Key Giriniz:", type="password")
-st.sidebar.markdown("[Buradan ücretsiz API anahtarı alabilirsin](https://aistudio.google.com/app/apikey)")
+with st.sidebar:
+    api_key = st.text_input("Gemini API Key Giriniz:", type="password")
+    st.info("API Key'inizi Google AI Studio'dan alabilirsiniz.")
 
-# Ana ekran
-video_url = st.text_input("YouTube Video Linkini Buraya Yapıştırın:")
+video_url = st.text_input("YouTube Video Linkini Yapıştırın:")
 
-if st.button("Analiz Et ve Notları Çıkar"):
+if st.button("Analiz Et"):
     if not api_key:
-        st.warning("Lütfen sol tarafa API anahtarınızı girin.")
+        st.error("Lütfen önce API Key giriniz!")
     elif not video_url:
-        st.warning("Lütfen bir video linki girin.")
+        st.error("Lütfen bir video linki giriniz!")
     else:
         try:
-            with st.spinner("Video inceleniyor..."):
-                # Video ID ayıklama
-                video_id = video_url.split("v=")[1].split("&")[0] if "v=" in video_url else video_url.split("/")[-1]
-                
-                # Altyazıları çekme
+            video_id = video_url.split("v=")[1].split("&")[0]
+            
+            with st.spinner("Video okunuyor ve analiz ediliyor..."):
+                # DOĞRU KULLANIM BURASI:
                 transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
-                full_text = " ".join([t['text'] for t in transcript_list])
+                text = " ".join([t['text'] for t in transcript_list])
                 
-                # Yapay Zekaya Gönderme
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-pro')
                 
-                prompt = f"""
-                Sen profesyonel bir eğitim asistanısın. Aşağıdaki video transkriptini analiz et:
-                1. Konunun ana fikrini yaz.
-                2. Önemli başlıkları ve altındaki detayları madde madde açıkla.
-                3. Varsa önemli tarih, isim veya formülleri tablo yap.
-                4. Öğrencinin konuyu pekiştirmesi için 3 tane soru sor.
-                
-                Metin: {full_text[:15000]}
-                """
-                
+                prompt = f"Aşağıdaki video içeriğini detaylı bir ders notuna dönüştür, önemli yerleri vurgula:\n\n{text}"
                 response = model.generate_content(prompt)
                 
                 st.success("Analiz Tamamlandı!")
-                st.markdown("### 📝 Ders Notların")
-                st.write(response.text)
+                st.markdown(response.text)
                 
         except Exception as e:
-            st.error(f"Hata: {str(e)}")
-            st.info("İpucu: Videoda altyazı desteği olduğundan emin olun.")
+            st.error(f"Bir hata oluştu: {e}")
