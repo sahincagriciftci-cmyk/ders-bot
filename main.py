@@ -2,101 +2,90 @@ import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi
 import google.generativeai as genai
 
-# Sayfa Yapılandırması
-st.set_page_config(page_title="Yapay Zeka Ders Asistanı", layout="wide", page_icon="🎓")
+# 1. Sayfa Konfigürasyonu
+st.set_page_config(page_title="AI Ders Asistanı", page_icon="📖", layout="centered")
 
-# Özel CSS ile Arayüzü Güzelleştirelim
+# 2. Arayüz Tasarımı (CSS)
 st.markdown("""
     <style>
-    .main { background-color: #f5f7f9; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #ff4b4b; color: white; }
-    .stTextInput>div>div>input { border-radius: 5px; }
+    .main { background-color: #f8f9fa; }
+    .stButton>button { width: 100%; border-radius: 8px; background-color: #4CAF50; color: white; font-weight: bold; }
+    .stTextInput>div>div>input { border-radius: 8px; }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 st.title("🎓 Yapay Zeka Ders Asistanı")
-st.caption("YouTube videolarını profesyonel ders notlarına dönüştürün.")
+st.write("YouTube videolarını dakikalar içinde kapsamlı ders notlarına dönüştürün.")
 
-# Yan Panel (API Key)
+# 3. Yan Panel Ayarları
 with st.sidebar:
-    st.header("⚙️ Ayarlar")
-    api_key = st.text_input("Gemini API Key Giriniz:", type="password", help="Google AI Studio'dan aldığınız anahtar.").strip()
-    st.divider()
-    st.info("💡 İpucu: Altyazıları olan (CC) videolar her zaman daha iyi sonuç verir.")
+    st.header("🔑 Yapılandırma")
+    api_key = st.text_input("Gemini API Key:", type="password", placeholder="AIza...").strip()
+    st.markdown("---")
+    st.markdown("### Nasıl Kullanılır?")
+    st.write("1. API Key'inizi girin.\n2. Video linkini yapıştırın.\n3. Analiz et butonuna basın.")
 
-# Ana Giriş Alanı
-video_url = st.text_input("YouTube Video Linkini Buraya Yapıştırın:", placeholder="https://www.youtube.com/watch?v=...").strip()
+# 4. Ana Uygulama Mantığı
+video_url = st.text_input("YouTube Video URL:", placeholder="https://www.youtube.com/watch?v=...").strip()
 
-if st.button("Analiz Et ve Not Çıkar"):
+if st.button("Ders Notu Oluştur"):
     if not api_key:
-        st.warning("⚠️ Lütfen sol taraftaki menüden geçerli bir API Key giriniz.")
+        st.error("Lütfen bir Gemini API Key giriniz.")
     elif not video_url:
-        st.warning("⚠️ Lütfen analiz etmek istediğiniz bir YouTube video linki giriniz.")
+        st.error("Lütfen geçerli bir YouTube video linki giriniz.")
     else:
         try:
-            # 1. Video ID Ayıklama (Her türlü link formatı için)
-            video_id = ""
+            # Video ID Ayıklama
             if "v=" in video_url:
-                video_id = video_url.split("v=")[1].split("&")[0]
+                v_id = video_url.split("v=")[1].split("&")[0]
             elif "youtu.be/" in video_url:
-                video_id = video_url.split("/")[-1].split("?")[0]
+                v_id = video_url.split("/")[-1].split("?")[0]
             else:
-                video_id = video_url # Sadece ID girilirse
+                v_id = video_url
 
-            if not video_id:
-                st.error("❌ Video linki anlaşılamadı. Lütfen linki kontrol edin.")
-                st.stop()
-
-            with st.spinner("🔍 Video inceleniyor, altyazılar toplanıyor..."):
-                # 2. Gelişmiş Altyazı Çekme (Hata almamak için 3 aşamalı deneme)
-                full_text = ""
+            with st.spinner("⏳ Video içeriği okunuyor (bu işlem videonun uzunluğuna göre 10-30 saniye sürebilir)..."):
+                # Altyazı Çekme İşlemi (Çoklu Dil Desteği ile)
                 try:
-                    # Aşama A: Mevcut tüm altyazıları listele
-                    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                    
+                    t_list = YouTubeTranscriptApi.list_transcripts(v_id)
+                    # Önce Türkçe, yoksa İngilizce, o da yoksa ilk dili Türkçe'ye çevirerek al
                     try:
-                        # Aşama B: Önce Türkçe veya İngilizce manuel/otomatik altyazı ara
-                        transcript = transcript_list.find_transcript(['tr', 'en']).fetch()
+                        transcript = t_list.find_transcript(['tr']).fetch()
                     except:
-                        # Aşama C: Eğer yoksa, mevcut ilk altyazıyı (herhangi bir dilde) bul ve Türkçe'ye çevir
-                        # Bu İlber Ortaylı gibi sadece tek dilde otomatik altyazısı olanlar için hayat kurtarır
-                        transcript = transcript_list.find_one_of_variable_langs(['tr', 'en', 'de', 'fr']).translate('tr').fetch()
+                        try:
+                            transcript = t_list.find_transcript(['en']).fetch()
+                        except:
+                            transcript = t_list.find_one_of_variable_langs(['en', 'tr', 'de', 'fr']).translate('tr').fetch()
                     
                     full_text = " ".join([t['text'] for t in transcript])
-                
-                except Exception as sub_e:
-                    st.error(f"⚠️ Altyazı Erişilemedi: Bu videoda altyazı kapalı olabilir veya YouTube erişimi engelliyor.")
+                    
+                except Exception as e:
+                    st.error(f"❌ Altyazı alınamadı. Video sahibi altyazıları kapatmış olabilir. Hata: {str(e)}")
                     st.stop()
 
-                # 3. Gemini Analizi
-                if full_text:
-                    genai.configure(api_key=api_key)
-                    # En stabil model olan flash-1.5 kullanıyoruz
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    
-                    prompt = f"""
-                    Sen uzman bir eğitim asistanısın. Aşağıdaki video transkriptini kullanarak öğrencilerin çalışabileceği düzenli bir ders notu oluştur.
-                    
-                    Lütfen şu yapıyı takip et:
-                    - **Dersin Konusu ve Özet**: Videonun ne anlattığını kısaca açıkla.
-                    - **Ana Başlıklar ve Detaylı Notlar**: Önemli kısımları madde madde, anlaşılır bir dille açıkla.
-                    - **Kilit Kavramlar**: Varsa videoda geçen önemli terimleri tanımla.
-                    - **Öğrenci Soruları**: Konuyu pekiştirmek için 3 adet soru hazırla.
-                    
-                    Video Metni:
-                    {full_text[:20000]} 
-                    """
-                    
-                    response = model.generate_content(prompt)
-                    
-                    st.success("✅ Analiz başarıyla tamamlandı!")
-                    st.markdown("---")
-                    st.markdown(response.text)
-                    
-                    # Notları indirme butonu ekleyelim
-                    st.download_button(label="📥 Notları İndir (.txt)", data=response.text, file_name="ders_notu.txt", mime="text/plain")
+                # Gemini ile Analiz
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                prompt = f"""
+                Sen profesyonel bir not tutma asistanısın. Aşağıdaki video transkriptini analiz et ve:
+                - Konuyu açıklayan bir başlık koy.
+                - Videoyu 3-5 ana başlık altında detaylandır.
+                - Önemli kavramları kalın yazıyla vurgula.
+                - En sonda öğrenci için 3 adet 'Biliyor muydunuz?' sorusu hazırla.
+                
+                Transkript:
+                {full_text[:15000]}
+                """
+                
+                response = model.generate_content(prompt)
+                
+                # Sonuçları Göster
+                st.success("✨ Ders notlarınız hazır!")
+                st.markdown("---")
+                st.markdown(response.text)
+                
+                # İndirme Butonu
+                st.download_button("📥 Notları TXT Olarak İndir", response.text, file_name="ders_notu.txt")
 
         except Exception as e:
-            st.error(f"🚨 Beklenmedik bir hata oluştu: {str(e)}")
-            st.info("Lütfen sayfayı yenileyip tekrar deneyin veya farklı bir video deneyin.")
-
+            st.error(f"🚨 Beklenmedik bir hata: {str(e)}")
