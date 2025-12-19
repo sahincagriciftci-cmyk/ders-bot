@@ -32,15 +32,35 @@ if st.button("Analiz Et"):
             with st.spinner("Video inceleniyor ve notlar hazırlanıyor..."):
                 # Gelişmiş Altyazı Çekme Sistemi
                 try:
-                    # Önce Türkçe ve İngilizce dillerini dene (Orijinal ve Otomatik dahil)
                     transcript = YouTubeTranscriptApi.get_transcript(v_id, languages=['tr', 'en', 'tr-orig', 'en-orig'])
                 except:
-                    # Eğer bulamazsa, mevcut tüm altyazıları listele ve uygun olanı çek
                     transcript_list = YouTubeTranscriptApi.list_transcripts(v_id)
-                    # Bulabildiği ilk Türkçe veya İngilizce altyazıyı (otomatik çeviri dahil) getirir
                     transcript = transcript_list.find_transcript(['tr', 'en']).fetch()
 
                 full_text = " ".join([t['text'] for t in transcript])
                 
                 # Gemini Yapılandırması
-                genai.configure(api_key=
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                prompt = f"""
+                Aşağıdaki ders içeriğini kullanarak kapsamlı bir ders notu hazırla:
+                1. Ana Başlık ve Özet
+                2. Önemli Maddeler
+                3. Varsa Kavramlar ve Açıklamaları
+                4. Öğrenci için 3 adet çalışma sorusu.
+
+                Video Metni:
+                {full_text[:15000]}
+                """
+                
+                response = model.generate_content(prompt)
+                
+                st.success("Tebrikler! Ders notun hazır.")
+                st.markdown("---")
+                st.markdown(response.text)
+                
+        except Exception as e:
+            st.error(f"Hata oluştu: {e}")
+            st.info("İpucu: Altyazıların açık olduğundan emin olun.")
+
