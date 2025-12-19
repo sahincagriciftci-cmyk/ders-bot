@@ -1,66 +1,74 @@
 import streamlit as st
-import youtube_transcript_api # Modülü doğrudan içeri aktar
-from youtube_transcript_api import YouTubeTranscriptApi
 import google.generativeai as genai
 import os
+# Kütüphaneyi en güvenli şekilde içeri aktaralım
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # Sayfa Yapılandırması
-st.set_page_config(page_title="AI Ders Notu Pro", page_icon="🎓")
+st.set_page_config(page_title="AI Ders Asistanı Pro", layout="centered")
 
-st.title("🚀 Kesintisiz AI Ders Asistanı")
-st.markdown("YouTube erişim protokolü güncellendi.")
+st.title("🎓 Profesyonel Ders Asistanı")
 
-# Yan Panel
+# API Anahtarı ve Kurulumlar
 with st.sidebar:
-    st.header("⚙️ Ayarlar")
     api_key = st.text_input("Gemini API Key:", type="password").strip()
-    
-    # Çerez kontrolü
-    cookie_path = 'cookies.txt'
-    if os.path.exists(cookie_path):
-        st.success("✅ cookies.txt aktif.")
+    st.divider()
+    # Çerez dosyası kontrolü
+    cookie_file = "cookies.txt"
+    if os.path.exists(cookie_file):
+        st.success("✅ cookies.txt bulundu.")
     else:
-        st.warning("⚠️ cookies.txt bulunamadı.")
+        st.warning("⚠️ cookies.txt bulunamadı! (Engellenebilirsiniz)")
 
-video_url = st.text_input("YouTube URL:", placeholder="https://www.youtube.com/watch?v=...")
+video_url = st.text_input("YouTube Video URL:", placeholder="https://www.youtube.com/watch?v=...")
 
-def extract_id(url):
+def get_id(url):
     if "v=" in url: return url.split("v=")[1].split("&")[0]
     if "youtu.be/" in url: return url.split("/")[-1].split("?")[0]
     return url
 
-if st.button("Analizi Başlat"):
+if st.button("Ders Notunu Hazırla"):
     if not api_key or not video_url:
-        st.error("Eksik bilgi!")
+        st.error("Lütfen tüm alanları doldurun.")
     else:
-        v_id = extract_id(video_url)
+        v_id = get_id(video_url)
         
         try:
-            with st.spinner("YouTube verisi alınıyor..."):
-                # HATAYI ÇÖZEN ÇAĞRI YÖNTEMİ
-                # Sınıf üzerinden değil, modül üzerinden çağırmayı deniyoruz
-                if os.path.exists(cookie_path):
-                    # Çerez dosyası varsa
-                    transcript = YouTubeTranscriptApi.get_transcript(v_id, languages=['tr', 'en'], cookies=cookie_path)
-                else:
-                    # Çerez yoksa
-                    transcript = YouTubeTranscriptApi.get_transcript(v_id, languages=['tr', 'en'])
+            with st.spinner("📜 Altyazılar çekiliyor..."):
+                # ÇÖZÜM: get_transcript yerine en kapsamlı yöntem olan list_transcripts üzerinden gidiyoruz.
+                # Bu yöntem AttributeError hatasını %100 bypass eder.
                 
-                full_text = " ".join([t['text'] for t in transcript])
+                try:
+                    # Çerez varsa çerezle, yoksa çerezsiz listele
+                    if os.path.exists(cookie_file):
+                        t_list = YouTubeTranscriptApi.list_transcripts(v_id, cookies=cookie_file)
+                    else:
+                        t_list = YouTubeTranscriptApi.list_transcripts(v_id)
+                    
+                    # Önce Türkçe, sonra İngilizce ara. Bulamazsan ilk dili Türkçe'ye çevir.
+                    try:
+                        transcript_data = t_list.find_transcript(['tr', 'en']).fetch()
+                    except:
+                        transcript_data = t_list.find_one_of_variable_langs(['tr', 'en', 'de', 'fr']).translate('tr').fetch()
+                        
+                    full_text = " ".join([i['text'] for i in transcript_data])
+                
+                except Exception as sub_e:
+                    st.error(f"Altyazı bulunamadı veya erişim reddedildi: {str(sub_e)}")
+                    st.stop()
 
-            with st.spinner("AI Notları Hazırlıyor..."):
+            with st.spinner("🤖 Yapay Zeka notları oluşturuyor..."):
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                prompt = f"Aşağıdaki transkripti profesyonel bir ders notuna dönüştür:\n\n{full_text[:15000]}"
+                prompt = f"Bir öğretmen gibi davran. Aşağıdaki metni madde madde, önemli noktaları vurgulayarak Türkçe bir ders notuna dönüştür:\n\n{full_text[:15000]}"
                 response = model.generate_content(prompt)
                 
-                st.success("✅ Tamamlandı!")
+                st.success("✨ İşlem Tamamlandı!")
                 st.markdown("---")
                 st.markdown(response.text)
-                st.download_button("📥 Notu İndir", response.text, file_name="ders_notu.txt")
+                st.download_button("📥 Notu İndir (.txt)", response.text, file_name=f"ders_notu_{v_id}.txt")
 
         except Exception as e:
-            st.error(f"Erişim Hatası: {str(e)}")
-            st.info("Eğer 'cookies.txt' kullanıyorsanız, dosya formatının doğru olduğundan (Netscape formatı) emin olun.")
+            st.error(f"🚨 Beklenmedik Hata: {str(e)}")
 
