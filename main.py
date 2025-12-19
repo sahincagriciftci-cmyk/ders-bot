@@ -5,26 +5,20 @@ import google.generativeai as genai
 # Sayfa Yapılandırması
 st.set_page_config(page_title="Akıllı Ders Asistanı", page_icon="🎓", layout="centered")
 
-# Görsel Düzenleme
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 10px; height: 3em; background-color: #007BFF; color: white; font-weight: bold; }
-    .success-text { color: #28a745; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🎓 Akıllı Ders Asistanı")
-st.write("YouTube videolarını profesyonel ders notlarına ve özetlere dönüştürün.")
 
-# Sol Panel Ayarları
 with st.sidebar:
     st.header("🔑 Bağlantı Ayarları")
-    api_key = st.text_input("Gemini API Key:", type="password", help="Google AI Studio'dan alınmalıdır.").strip()
-    st.divider()
+    api_key = st.text_input("Gemini API Key:", type="password").strip()
     st.info("💡 Not: Altyazıları (CC) aktif olan videoları kullanın.")
 
-# Ana Giriş
-video_url = st.text_input("YouTube Video Linkini Girin:", placeholder="https://www.youtube.com/watch?v=...").strip()
+video_url = st.text_input("YouTube Video Linkini Girin:").strip()
 
 def get_video_id(url):
     if "v=" in url: return url.split("v=")[1].split("&")[0]
@@ -40,52 +34,41 @@ if st.button("Analiz Et ve Ders Notu Hazırla"):
         v_id = get_video_id(video_url)
         
         try:
-            with st.spinner("⏳ Adım 1: Altyazılar çekiliyor..."):
-                # HİBRİT ALTYAZI ÇEKME MANTIĞI
-                # Bu yöntem AttributeError hatalarını engeller
+            with st.spinner("⏳ Altyazılar aranıyor..."):
+                # GÜÇLENDİRİLMİŞ ALTYAZI ÇEKME
                 full_text = ""
                 try:
-                    # Önce mevcut transkriptleri listele (En sağlam yöntem)
-                    proxy_list = YouTubeTranscriptApi.list_transcripts(v_id)
+                    # 1. Aşama: Tüm transkript listesini al
+                    transcript_list = YouTubeTranscriptApi.list_transcripts(v_id)
                     
-                    # Tercih sırası: Türkçe Manuel -> Türkçe Otomatik -> İngilizce -> Otomatik Çeviri
+                    # 2. Aşama: Önce Türkçe, sonra İngilizce, sonra herhangi biri
                     try:
-                        t = proxy_list.find_transcript(['tr']).fetch()
+                        transcript = transcript_list.find_transcript(['tr', 'en']).fetch()
                     except:
-                        try:
-                            t = proxy_list.find_transcript(['en']).fetch()
-                        except:
-                            t = proxy_list.find_one_of_variable_langs(['en', 'tr', 'de', 'fr']).translate('tr').fetch()
+                        # Eğer yukarıdaki diller yoksa, mevcut olan İLK dili bul ve Türkçe'ye çevir
+                        # Bu en sağlam yöntemdir:
+                        first_transcript = next(iter(transcript_list._manually_created_transcripts.values() if transcript_list._manually_created_transcripts else transcript_list._generated_transcripts.values()))
+                        transcript = first_transcript.translate('tr').fetch()
                     
-                    full_text = " ".join([i['text'] for i in t])
+                    full_text = " ".join([i['text'] for i in transcript])
+                
                 except Exception as e:
-                    st.error("❌ Bu videonun altyazılarına erişilemedi. Lütfen CC simgesi olan bir video deneyin.")
+                    # Hata mesajını daha detaylı gösterelim ki sorunu anlayalım
+                    st.error(f"❌ Altyazı Erişim Hatası: {str(e)}")
                     st.stop()
 
-            with st.spinner("🧠 Adım 2: Yapay zeka notları hazırlıyor..."):
-                # Gemini Yapılandırması
+            with st.spinner("🧠 Yapay zeka notları hazırlıyor..."):
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                prompt = f"""
-                Sen akademik bir asistanısın. Aşağıdaki metni analiz et:
-                1. Kapsamlı bir ders özeti çıkar.
-                2. Önemli bilgileri madde madde (bullet points) listele.
-                3. Varsa tarihleri, isimleri ve teknik terimleri vurgula.
-                4. Konuyu pekiştirecek 3 soru ve cevabını ekle.
-                
-                Metin: {full_text[:15000]}
-                """
+                prompt = f"Aşağıdaki matematik dersi transkriptini, önemli formülleri ve mantıksal adımları vurgulayarak Türkçe bir ders notuna dönüştür:\n\n{full_text[:15000]}"
                 
                 response = model.generate_content(prompt)
-                
                 st.success("✨ İşlem Başarıyla Tamamlandı!")
                 st.markdown("---")
                 st.markdown(response.text)
-                
-                # İndirme Seçeneği
-                st.download_button("📥 Ders Notunu İndir (.txt)", response.text, file_name=f"ders_notu_{v_id}.txt")
+                st.download_button("📥 Ders Notunu İndir", response.text, file_name="ders_notu.txt")
 
         except Exception as e:
-            st.error(f"🚨 Bir hata oluştu: {str(e)}")
+            st.error(f"🚨 Genel Hata: {str(e)}")
 
