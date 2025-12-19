@@ -1,18 +1,16 @@
 import streamlit as st
-from youtube_transcript_api import YouTubeTranscriptApi
+import youtube_transcript_api
+from youtube_transcript_api import YouTubeTranscriptApi as yta
 import google.generativeai as genai
 
-# Sayfa Yapılandırması
 st.set_page_config(page_title="Ders Asistanı", layout="wide")
 
 st.title("🎓 Yapay Zeka Ders Asistanı")
 
-# Yan Panel (API Key)
 with st.sidebar:
     api_key = st.text_input("Gemini API Key Giriniz:", type="password")
     st.info("API Key'inizi Google AI Studio'dan alabilirsiniz.")
 
-# Ana Ekran Giriş
 video_url = st.text_input("YouTube Video Linkini Yapıştırın:")
 
 if st.button("Analiz Et"):
@@ -31,25 +29,14 @@ if st.button("Analiz Et"):
                 video_id = video_url
 
             with st.spinner("Video okunuyor ve analiz ediliyor..."):
-                # Altyazı çekme - Tüm ihtimalleri ekledik
-                transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en', 'tr-orig', 'en-orig'])
+                # Bu sefer doğrudan ana modül üzerinden çağırıyoruz:
+                transcript_list = yta.get_transcript(video_id, languages=['tr', 'en', 'tr-orig', 'en-orig'])
                 text = " ".join([t['text'] for t in transcript_list])
                 
-                # Yapay Zeka Yapılandırması
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                # İstek (Prompt)
-                prompt = f"""
-                Aşağıdaki video içeriğini profesyonel bir ders notuna dönüştür:
-                1. Konu özeti ve ana fikir.
-                2. Önemli kısımları madde madde açıkla.
-                3. Varsa önemli kavramları vurgula.
-                
-                Video Metni:
-                {text[:15000]}
-                """
-                
+                prompt = f"Aşağıdaki video içeriğini profesyonel bir ders notuna dönüştür:\n\n{text[:15000]}"
                 response = model.generate_content(prompt)
                 
                 st.success("Analiz Tamamlandı!")
@@ -57,5 +44,5 @@ if st.button("Analiz Et"):
                 st.markdown(response.text)
                 
         except Exception as e:
-            st.error(f"Bir hata oluştu: {e}")
-            st.info("İpucu: Videoda altyazıların (CC) açık olduğundan ve linkin doğru olduğundan emin olun.")
+            st.error(f"Hata detayı: {e}")
+            st.info("Eğer 'No transcript found' diyorsa videoda altyazı yoktur.")
