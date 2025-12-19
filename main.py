@@ -24,7 +24,7 @@ if st.button("Analiz Et"):
             
             with st.spinner("Video okunuyor ve analiz ediliyor..."):
                 # DOĞRU KULLANIM BURASI:
-                transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en'])
+               transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['tr', 'en', 'tr-orig', 'en-orig'])
                 text = " ".join([t['text'] for t in transcript_list])
                 
                 genai.configure(api_key=api_key)
@@ -38,3 +38,4 @@ if st.button("Analiz Et"):
                 
         except Exception as e:
             st.error(f"Bir hata oluştu: {e}")
+
