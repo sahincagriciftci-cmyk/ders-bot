@@ -1,10 +1,8 @@
 import streamlit as st
-import youtube_transcript_api
-from youtube_transcript_api import YouTubeTranscriptApi as yta
+from youtube_transcript_api import YouTubeTranscriptApi
 import google.generativeai as genai
 
 st.set_page_config(page_title="Ders Asistanı", layout="wide")
-
 st.title("🎓 Yapay Zeka Ders Asistanı")
 
 with st.sidebar:
@@ -20,29 +18,25 @@ if st.button("Analiz Et"):
         st.error("Lütfen bir video linki giriniz!")
     else:
         try:
-            # Video ID Ayıklama
+            # Video ID'yi her iki link formatı için de alalım
             if "v=" in video_url:
-                video_id = video_url.split("v=")[1].split("&")[0]
-            elif "youtu.be/" in video_url:
-                video_id = video_url.split("/")[-1]
+                v_id = video_url.split("v=")[1].split("&")[0]
             else:
-                video_id = video_url
+                v_id = video_url.split("/")[-1]
 
-            with st.spinner("Video okunuyor ve analiz ediliyor..."):
-                # Bu sefer doğrudan ana modül üzerinden çağırıyoruz:
-                transcript_list = yta.get_transcript(video_id, languages=['tr', 'en', 'tr-orig', 'en-orig'])
-                text = " ".join([t['text'] for t in transcript_list])
+            with st.spinner("Video inceleniyor..."):
+                # Kütüphaneyi doğrudan çağırıyoruz
+                transcript = YouTubeTranscriptApi.get_transcript(v_id, languages=['tr', 'en'])
+                full_text = " ".join([t['text'] for t in transcript])
                 
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                prompt = f"Aşağıdaki video içeriğini profesyonel bir ders notuna dönüştür:\n\n{text[:15000]}"
+                prompt = f"Aşağıdaki metni detaylı ders notuna dönüştür:\n\n{full_text[:15000]}"
                 response = model.generate_content(prompt)
                 
-                st.success("Analiz Tamamlandı!")
-                st.markdown("---")
+                st.success("İşlem Başarılı!")
                 st.markdown(response.text)
                 
         except Exception as e:
-            st.error(f"Hata detayı: {e}")
-            st.info("Eğer 'No transcript found' diyorsa videoda altyazı yoktur.")
+            st.error(f"Hata oluştu: {e}")
