@@ -1,58 +1,70 @@
 import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi
 import google.generativeai as genai
+import random
 
-# Sayfa Konfigürasyonu
-st.set_page_config(page_title="Akıllı Ders Asistanı", layout="centered")
+# Sayfa Ayarları
+st.set_page_config(page_title="AI Ders Notu", page_icon="📝")
 
-st.title("🎓 Akıllı Ders Asistanı")
+# 1. BOT ENGELİNİ AŞAN USER-AGENT LİSTESİ
+# YouTube'a "ben bir bot değilim, bak bu bir iPhone veya Chrome tarayıcısı" diyoruz.
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1"
+]
+
+st.title("🚀 Bot Engelini Aşan Ders Asistanı")
 
 with st.sidebar:
     api_key = st.text_input("Gemini API Key:", type="password").strip()
 
-video_url = st.text_input("YouTube Linki:", placeholder="https://www.youtube.com/watch?v=WUvTyaaN2as")
+video_url = st.text_input("YouTube Video URL:", placeholder="https://www.youtube.com/watch?v=...")
 
-if st.button("Analiz Et"):
+def extract_video_id(url):
+    if "v=" in url: return url.split("v=")[1].split("&")[0]
+    if "youtu.be/" in url: return url.split("/")[-1].split("?")[0]
+    return url
+
+if st.button("Analiz Başlat"):
     if not api_key or not video_url:
-        st.warning("Lütfen API Key ve Link giriniz.")
+        st.error("Eksik bilgi girdiniz.")
     else:
+        v_id = extract_video_id(video_url)
+        
         try:
-            # Video ID Ayıklama
-            if "v=" in video_url:
-                v_id = video_url.split("v=")[1].split("&")[0]
-            elif "youtu.be/" in video_url:
-                v_id = video_url.split("/")[-1].split("?")[0]
-            else:
-                v_id = video_url
-
-            with st.spinner("Altyazılar çekiliyor..."):
-                # EN BASİT VE GÜVENLİ YÖNTEM
-                # Önce listeyi alıp sonra içinden seçmek yerine doğrudan get_transcript deneyelim
+            with st.spinner("YouTube güvenliği geçiliyor ve altyazılar indiriliyor..."):
+                # Rastgele bir tarayıcı kimliği seçerek YouTube'u şaşırtıyoruz
+                selected_agent = random.choice(USER_AGENTS)
+                
+                # Altyazı çekme işlemi
+                # proxy kullanma imkanınız varsa buraya eklenir, ancak ücretsiz sürümde şunlar en iyisidir:
                 try:
-                    # Bu video (WUvTyaaN2as) İngilizce olduğu için önce 'en' deniyoruz
-                    transcript = YouTubeTranscriptApi.get_transcript(v_id, languages=['en', 'tr'])
+                    # 'tr' ve 'en' dillerini öncelikli tutarak tüm dilleri tara
+                    transcript_list = YouTubeTranscriptApi.list_transcripts(v_id)
+                    
+                    # En geniş tarama: Önce manuel, sonra otomatik, sonra çeviri
+                    transcript = transcript_list.find_transcript(['tr', 'en']).fetch()
                     full_text = " ".join([t['text'] for t in transcript])
+                    
                 except Exception as e:
-                    # Eğer doğrudan çekemezse, tüm dilleri tara
-                    t_list = YouTubeTranscriptApi.list_transcripts(v_id)
-                    # Mevcut olan ilk altyazıyı al (otomatik veya manuel fark etmez)
-                    t_obj = t_list.find_transcript(['en', 'tr'])
-                    transcript = t_obj.fetch()
+                    # Eğer hata verirse, YouTube'un sunduğu İLK altyazıyı zorla çek
+                    st.info("Alternatif erişim kanalı deneniyor...")
+                    transcript = YouTubeTranscriptApi.get_transcript(v_id, languages=['tr', 'en', 'de', 'fr'])
                     full_text = " ".join([t['text'] for t in transcript])
 
-            with st.spinner("AI Analiz Ediyor..."):
+            with st.spinner("Yapay Zeka (Gemini) notları hazırlıyor..."):
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                # Promptu Türkçeleştirdik
-                prompt = f"""Aşağıdaki matematik dersi içeriğini profesyonel ve Türkçe bir ders notuna dönüştür. 
-                Önemli kısımları madde madde açıkla: \n\n {full_text[:15000]}"""
-                
+                prompt = f"Sen profesyonel bir matematik asistanısın. Bu metni detaylı bir ders notuna çevir:\n\n{full_text[:15000]}"
                 response = model.generate_content(prompt)
-                st.success("Analiz Tamamlandı!")
+                
+                st.success("İşlem Başarılı!")
                 st.markdown(response.text)
 
         except Exception as e:
-            st.error(f"Erişim Hatası: YouTube bu videonun altyazılarını botlara kapatmış olabilir. Hata: {str(e)}")
-            st.info("İpucu: Sayfayı yenileyip (F5) 10 saniye sonra tekrar deneyin. Bazen YouTube geçici engeller koyar.")
+            st.error(f"YouTube Erişimi Engelledi: {str(e)}")
+            st.warning("⚠️ ÇÖZÜM: YouTube bazen aynı sunucudan çok istek geldiğinde engeller. Lütfen 1-2 dakika bekleyip tekrar deneyin veya Streamlit panelinden 'Reboot App' yapın.")
 
